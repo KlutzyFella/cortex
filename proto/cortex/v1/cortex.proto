@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package cortex.v1;
+
+option go_package = "github.com/KlutzyFella/cortex/gateway/gen/proto/cortex/v1;cortexv1";
+
+// DocumentChunk represents a retrieved chunk of a source document.
+message DocumentChunk {
+  string chunk_id    = 1;
+  string document_id = 2;
+  string content     = 3;
+  float  score       = 4;
+  map<string, string> metadata = 5;
+}
+
+// ── RetrieverService ──────────────────────────────────────────────────────────
+
+message SearchDocumentsRequest {
+  string query           = 1;
+  int32  top_k           = 2;
+  float  score_threshold = 3;
+}
+
+message SearchDocumentsResponse {
+  repeated DocumentChunk chunks = 1;
+}
+
+service RetrieverService {
+  // SearchDocuments performs hybrid (semantic + BM25) search and returns the
+  // top-k most relevant document chunks.
+  rpc SearchDocuments(SearchDocumentsRequest) returns (SearchDocumentsResponse);
+}
+
+// ── GeneratorService ──────────────────────────────────────────────────────────
+
+message GenerateAnswerRequest {
+  string query                    = 1;
+  repeated DocumentChunk context_chunks = 2;
+  // Optional: override the default model (e.g. "claude-sonnet-4-6", "gpt-4o").
+  string model                    = 3;
+}
+
+message Citation {
+  string chunk_id    = 1;
+  string document_id = 2;
+  string excerpt     = 3;
+}
+
+message GenerateAnswerResponse {
+  string            answer    = 1;
+  repeated Citation citations = 2;
+  // grounded is true when every citation in the answer was validated against
+  // the provided context chunks (no hallucinated references).
+  bool grounded = 3;
+}
+
+service GeneratorService {
+  // GenerateAnswer calls an LLM with injected context and returns a grounded
+  // answer with validated citations.
+  rpc GenerateAnswer(GenerateAnswerRequest) returns (GenerateAnswerResponse);
+}
