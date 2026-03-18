@@ -1,0 +1,25 @@
+[project]
+name = "retriever"
+version = "0.1.0"
+description = "Cortex retriever service — hybrid search (semantic + BM25) via gRPC"
+requires-python = ">=3.11"
+dependencies = [
+    "grpcio>=1.62,<2",
+    "grpcio-tools>=1.62,<2",
+    "psycopg[binary]>=3.3,<4",
+    "pgvector>=0.4,<1",
+    "sentence-transformers>=5.3.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+dev-dependencies = ["pytest>=8.0", "pytest-asyncio>=0.23", "ruff>=0.4"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["."]
