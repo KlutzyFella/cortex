@@ -1,6 +1,5 @@
 """Unit tests for the document processor (text chunking)."""
 
-import pytest
 
 from processor import chunk_document
 

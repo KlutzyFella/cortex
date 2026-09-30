@@ -19,12 +19,11 @@ import sys
 import time
 from typing import Any
 
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import psycopg
-from confluent_kafka import Consumer, KafkaError, KafkaException
-
 from config import IngestionConfig
+from confluent_kafka import Consumer, KafkaError, KafkaException
 from db import get_connection, initialize_schema, insert_document, upsert_chunks
 from embedder import embed_chunks, load_model
 from processor import chunk_document

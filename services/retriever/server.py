@@ -1,16 +1,15 @@
 """gRPC service implementation for the Retriever."""
 
 import logging
-import sys
 import os
+import sys
 
 # Ensure the gen/ directory is on sys.path so the protobuf stubs resolve.
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "gen"))
 
 import grpc
-from cortex.v1 import cortex_pb2, cortex_pb2_grpc
-
 from config import RetrieverConfig
+from cortex.v1 import cortex_pb2, cortex_pb2_grpc
 from db import get_connection, search_similar_chunks
 from embedder import embed_query
 

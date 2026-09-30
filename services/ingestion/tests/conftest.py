@@ -1,7 +1,6 @@
 """Shared pytest fixtures for ingestion service tests."""
 
 import pytest
-
 from config import IngestionConfig
 
 

@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
-	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
@@ -21,7 +20,6 @@ import (
 
 // server holds all long-lived dependencies so they can be cleanly closed on shutdown.
 type server struct {
-	rdb           *redis.Client
 	producer      *kafka.Producer
 	retriever     cortexv1.RetrieverServiceClient
 	generator     cortexv1.GeneratorServiceClient
@@ -32,19 +30,10 @@ type server struct {
 
 func main() {
 	port := getenv("GATEWAY_PORT", "8080")
-	redisAddr := getenv("REDIS_ADDR", "localhost:6379")
 	kafkaAddr := getenv("KAFKA_ADDR", "localhost:9092")
 	kafkaTopic := getenv("KAFKA_TOPIC", "document.uploaded")
 	retrieverAddr := getenv("RETRIEVER_ADDR", "localhost:50051")
 	generatorAddr := getenv("GENERATOR_ADDR", "localhost:50052")
-
-	// --- Redis ---
-	rdb := redis.NewClient(&redis.Options{Addr: redisAddr})
-	if err := rdb.Ping(context.Background()).Err(); err != nil {
-		log.Printf("warning: redis not reachable at %s: %v", redisAddr, err)
-	} else {
-		log.Printf("connected to redis at %s", redisAddr)
-	}
 
 	// --- Kafka producer ---
 	producer, err := kafka.NewProducer(&kafka.ConfigMap{
@@ -85,7 +74,6 @@ func main() {
 	log.Printf("gRPC client connected to generator at %s", generatorAddr)
 
 	svc := &server{
-		rdb:           rdb,
 		producer:      producer,
 		retriever:     cortexv1.NewRetrieverServiceClient(retrieverConn),
 		generator:     cortexv1.NewGeneratorServiceClient(generatorConn),
@@ -128,7 +116,6 @@ func main() {
 	producer.Close()
 	retrieverConn.Close()
 	generatorConn.Close()
-	rdb.Close()
 
 	log.Println("gateway stopped")
 }
@@ -204,8 +191,6 @@ func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 		req.TopK = 5
 	}
 
-	// TODO: check Redis cache for (query, top_k) key before calling retriever
-
 	// Use a single deadline shared across both downstream RPCs.
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
@@ -233,8 +218,6 @@ func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "generator unavailable", http.StatusBadGateway)
 		return
 	}
-
-	// TODO: cache final answer in Redis keyed by (query, top_k)
 
 	// --- Build response ---
 	type chunkJSON struct {

@@ -31,7 +31,7 @@ proto: $(GATEWAY_GEN)
 	done
 	@echo "==> Proto generation complete."
 
-## up         Start local infrastructure (Postgres, Redis, Kafka)
+## up         Start local infrastructure (Postgres, Kafka)
 up:
 	docker compose -f $(COMPOSE) up -d
 

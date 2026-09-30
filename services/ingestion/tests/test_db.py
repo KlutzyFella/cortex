@@ -9,7 +9,6 @@ Run with:
 
 import pytest
 
-
 pytestmark = pytest.mark.integration
 
 DUMMY_EMBEDDING = [0.1] * 384
@@ -114,7 +113,8 @@ class TestUpsertChunks:
 
         with db_conn.cursor() as cur:
             cur.execute(
-                "SELECT chunk_index, chunk_text FROM document_chunks WHERE doc_id = %s ORDER BY chunk_index",
+                "SELECT chunk_index, chunk_text FROM document_chunks "
+                "WHERE doc_id = %s ORDER BY chunk_index",
                 (doc_id,),
             )
             rows = cur.fetchall()

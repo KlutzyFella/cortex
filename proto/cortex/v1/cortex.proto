@@ -26,8 +26,8 @@ message SearchDocumentsResponse {
 }
 
 service RetrieverService {
-  // SearchDocuments performs hybrid (semantic + BM25) search and returns the
-  // top-k most relevant document chunks.
+  // SearchDocuments performs semantic (vector similarity) search over stored
+  // chunks and returns the top-k most relevant results.
   rpc SearchDocuments(SearchDocumentsRequest) returns (SearchDocumentsResponse);
 }
 
@@ -36,7 +36,7 @@ service RetrieverService {
 message GenerateAnswerRequest {
   string query                    = 1;
   repeated DocumentChunk context_chunks = 2;
-  // Optional: override the default model (e.g. "claude-sonnet-4-6", "gpt-4o").
+  // Optional: override the default Gemini model (e.g. "gemini-2.5-flash").
   string model                    = 3;
 }
 
@@ -49,8 +49,9 @@ message Citation {
 message GenerateAnswerResponse {
   string            answer    = 1;
   repeated Citation citations = 2;
-  // grounded is true when every citation in the answer was validated against
-  // the provided context chunks (no hallucinated references).
+  // grounded is true when at least one citation in the answer was validated
+  // against the provided context chunks. Citations referencing a chunk_id that
+  // was not supplied are stripped before the response is returned.
   bool grounded = 3;
 }
 

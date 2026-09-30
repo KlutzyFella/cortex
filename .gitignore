@@ -1,7 +1,6 @@
 infra/data/
 pgdata/
 kafkadata/
-redpandadata/
 *.db
 *.sqlite
 

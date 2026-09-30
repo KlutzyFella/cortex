@@ -2,7 +2,7 @@
 Cortex Generator Service
 
 Starts a gRPC server on port 50052 implementing GeneratorService.GenerateAnswer:
-  query + context_chunks → LLM (Claude) → grounded answer + citations
+  query + context_chunks → LLM (Gemini) → grounded answer + citations
 """
 
 import logging
@@ -15,9 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "gen"))
 
 import grpc
-from cortex.v1 import cortex_pb2_grpc
-
 from config import GeneratorConfig
+from cortex.v1 import cortex_pb2_grpc
 from server import GeneratorServicer
 
 

@@ -1,6 +1,5 @@
 """Unit tests for the vector embedder."""
 
-import pytest
 
 
 class TestEmbedChunks:

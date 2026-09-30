@@ -3,8 +3,8 @@
 import logging
 from typing import NamedTuple
 
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate
+from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -15,11 +15,15 @@ logger = logging.getLogger(__name__)
 
 class CitationModel(BaseModel):
     chunk_id: str = Field(description="The chunk_id of the source chunk")
-    excerpt: str = Field(description="A short verbatim quote from that chunk that supports the answer")
+    excerpt: str = Field(
+        description="A short verbatim quote from that chunk that supports the answer"
+    )
 
 
 class LLMResponse(BaseModel):
-    answer: str = Field(description="The answer to the user's question, grounded in the provided context")
+    answer: str = Field(
+        description="The answer to the user's question, grounded in the provided context"
+    )
     citations: list[CitationModel] = Field(
         default_factory=list,
         description="List of citations referencing the chunk_ids used to form the answer",

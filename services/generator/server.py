@@ -8,9 +8,8 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "gen"))
 
 import grpc
-from cortex.v1 import cortex_pb2, cortex_pb2_grpc
-
 from config import GeneratorConfig
+from cortex.v1 import cortex_pb2, cortex_pb2_grpc
 from llm import build_chain, generate_response
 
 logger = logging.getLogger(__name__)
