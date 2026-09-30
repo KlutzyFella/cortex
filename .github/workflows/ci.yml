@@ -53,6 +53,8 @@ jobs:
           if [ -n "$unformatted" ]; then
             echo "::error::gofmt needed on:"
             echo "$unformatted"
+            echo "--- diff ---"
+            gofmt -d .
             exit 1
           fi
 
