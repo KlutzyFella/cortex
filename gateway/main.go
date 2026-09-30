@@ -168,9 +168,9 @@ func (s *server) ingestHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "accepted", "doc_id": payload.DocID})
 }
 
-// queryHandler runs the full RAG pipeline:
-//  1. Retriever.SearchDocuments  — semantic vector search
-//  2. Generator.GenerateAnswer   — grounded LLM answer with citations
+// queryHandler runs the full RAG pipeline: it retrieves the top-k relevant
+// chunks with RetrieverService.SearchDocuments, then generates a grounded
+// answer with GeneratorService.GenerateAnswer. Both calls share one deadline.
 //
 //	POST /api/v1/query
 //	Body: {"query": "...", "top_k": 3}
