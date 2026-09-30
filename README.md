@@ -1,366 +1,261 @@
 # Cortex
 
-> **A production-grade, polyglot RAG engine.** Ingest unstructured documents, embed them mathematically, and answer natural-language queries with strictly grounded, hallucination-free responses — every answer backed by citations to the exact source passages.
+A retrieval-augmented generation service where **every citation in the response points
+at a chunk the system actually retrieved**.
 
-![Go](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat-square&logo=go&logoColor=white)
-![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=flat-square&logo=python&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16+pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white)
-![Kafka](https://img.shields.io/badge/Kafka-Redpanda-FF6B35?style=flat-square&logo=apachekafka&logoColor=white)
-![gRPC](https://img.shields.io/badge/gRPC-Protobuf-244c5a?style=flat-square&logo=google&logoColor=white)
-![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)
+You POST a document; it is chunked, embedded into 384-dimensional vectors, and stored
+in PostgreSQL with pgvector. You POST a question; the nearest chunks are retrieved by
+cosine similarity, handed to Gemini along with the question, and returned as an answer
+with citations. Citations naming a `chunk_id` that was not in the retrieved set are
+stripped server-side before the response leaves the process — the model can misremember
+a source, but it cannot invent one that was never in its context.
+
+[![CI](https://github.com/KlutzyFella/cortex/actions/workflows/ci.yml/badge.svg)](https://github.com/KlutzyFella/cortex/actions/workflows/ci.yml)
+[![Go](https://img.shields.io/badge/Go-1.26.1-00ADD8?style=flat-square&logo=go&logoColor=white)](https://go.dev)
+[![Python](https://img.shields.io/badge/Python-3.12%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16%20%2B%20pgvector-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://github.com/pgvector/pgvector)
+[![Kafka](https://img.shields.io/badge/Kafka-confluent%2Fcp-kafka%207.6-FF6B35?style=flat-square&logo=apachekafka&logoColor=white)](https://kafka.apache.org)
+[![gRPC](https://img.shields.io/badge/gRPC-Protobuf-244c5a?style=flat-square&logo=google&logoColor=white)](https://grpc.io)
+[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
 ---
 
-## What is Cortex?
+## Architecture
 
-Cortex is a **Retrieval-Augmented Generation (RAG)** system built as a polyglot monorepo. It combines a high-concurrency Go API gateway with three specialised Python microservices communicating over gRPC, backed by a vector-native PostgreSQL database and an event-driven Kafka pipeline.
+A Go gateway owns the public HTTP surface and orchestration. The RAG work is split
+across three Python services that talk to the gateway over gRPC, with a single protobuf
+contract defining the boundary.
 
-The system is designed around one guarantee: **every answer is grounded.** The Generator service performs citation validation at the structural level — any claim the LLM makes that cannot be traced back to a chunk actually provided in the request is stripped from the response before it reaches the caller.
+```mermaid
+flowchart LR
+    Client["Client"] -->|"POST /ingest"| GW
+    Client2["Client"] -->|"POST /api/v1/query"| GW
 
-![Architecture Diagram](docs/architecture.png)
+    GW["Go gateway :8080"]
+    GW -->|"publish"| K[("Kafka<br/>document.uploaded")]
+    K --> ING["Ingestion worker"]
+    ING -->|"chunk → embed → upsert"| PG[("PostgreSQL<br/>+ pgvector")]
 
----
+    GW -->|"gRPC SearchDocuments"| RET["Retriever :50051"]
+    RET -->|"cosine search"| PG
 
-## System Architecture
-
-### Ingestion Pipeline
-
-```
-Client
-  │
-  └─▶  POST /ingest  ──▶  Go Gateway
-                              │
-                              └─▶  Kafka  (topic: document.uploaded)
-                                      │
-                                      └─▶  Ingestion Worker (Python)
-                                                │
-                                                ├─▶  LangChain RecursiveCharacterTextSplitter
-                                                │       chunk_size=500, overlap=50
-                                                │
-                                                ├─▶  SentenceTransformers  all-MiniLM-L6-v2
-                                                │       → 384-dim dense vectors
-                                                │
-                                                └─▶  PostgreSQL + pgvector
-                                                        tables: documents, document_chunks
-                                                        index:  HNSW cosine
+    GW -->|"gRPC GenerateAnswer"| GEN["Generator :50052"]
+    GEN -->|"completion"| GEM["Gemini API"]
 ```
 
-### Query Pipeline
+Ingestion is asynchronous and query is synchronous. `POST /ingest` returns `202`
+as soon as the message is on the topic; `POST /api/v1/query` calls the retriever and
+generator inline under a single shared 30-second deadline.
 
-```
-Client
-  │
-  └─▶  POST /api/v1/query  ──▶  Go Gateway
-                                    │
-                                    ├─▶  gRPC: RetrieverService.SearchDocuments  (:50051)
-                                    │           │
-                                    │           └─▶  pgvector  <=>  cosine distance
-                                    │                   → top-k DocumentChunks + scores
-                                    │
-                                    └─▶  gRPC: GeneratorService.GenerateAnswer   (:50052)
-                                                │
-                                                ├─▶  RAG prompt: context chunks + query
-                                                ├─▶  Google Gemini 2.5 Flash  (via LangChain)
-                                                ├─▶  Structured output  (Pydantic schema)
-                                                └─▶  Citation validation
-                                                        strip hallucinated chunk_ids
-                                                        set grounded=true if ≥1 valid citation
-                                                    ↓
-                                               { answer, citations, grounded, chunks }
-```
+The contract lives in [`proto/cortex/v1/cortex.proto`](proto/cortex/v1/cortex.proto)
+and is the only coupling between Go and Python. Go stubs are generated by `buf`,
+Python stubs by `grpc_tools.protoc`; both are committed.
 
 ---
 
-## Key Features
+## Quickstart
 
-| Feature | Detail |
-|---------|--------|
-| **Polyglot microservices** | Go gateway for throughput-critical routing; Python services for ML-heavy workloads |
-| **Event-driven ingestion** | Kafka decouples document upload from indexing — the gateway never blocks on embedding |
-| **HNSW vector index** | pgvector's Hierarchical Navigable Small World index gives sub-millisecond approximate nearest-neighbour search at scale |
-| **Grounded generation** | Structured LLM output parsed via Pydantic; every citation cross-referenced against the actual chunks in the request — hallucinated references are stripped automatically |
-| **Contract-first API** | All inter-service communication defined in a single `proto/cortex/v1/cortex.proto`; stubs generated for both Go and Python via `buf` |
-| **Monorepo workspace** | `uv` workspaces unify three Python services under one lockfile; a root `pyproject.toml` captures shared ML dependencies |
-| **Zero-trust defaults** | No hardcoded secrets; every service fails fast at startup with a descriptive error if a required env var is absent |
-| **Manual Kafka commits** | The ingestion worker commits offsets only after a successful database transaction — a crash mid-processing causes re-delivery, not silent data loss |
-
----
-
-## Prerequisites
-
-| Dependency | Version | Notes |
-|------------|---------|-------|
-| Docker + Compose | 24+ | Runs Postgres, Redpanda, Redis |
-| Go | 1.22+ | Builds the API gateway |
-| Python | 3.12+ | All three Python services |
-| [`uv`](https://docs.astral.sh/uv/) | 0.4+ | Python workspace & dependency management |
-| Buf CLI | 1.x | Only needed to regenerate protobuf stubs |
-| Google Gemini API Key | — | `gemini-2.5-flash` model access required |
-
----
-
-## Quick Start
-
-### 1. Clone and install dependencies
+**Prerequisites:** Go 1.26.1, Python 3.12+, [`uv`](https://docs.astral.sh/uv/),
+Docker (for Postgres and Kafka), and a `GOOGLE_API_KEY`.
 
 ```bash
 git clone https://github.com/KlutzyFella/cortex.git
 cd cortex
 
-# Install all Python workspace dependencies into a shared .venv
-uv sync
+make up                # Postgres (pgvector) on :5432, Kafka on :9092
+uv sync --all-packages # Python deps for all three services
+
+export DB_PASSWORD=cortex_dev          # required by the retriever and ingestion worker
+export GOOGLE_API_KEY=...              # required by the generator
 ```
 
-### 2. Start infrastructure
+Then start each process in its own terminal:
 
 ```bash
-docker compose -f infra/local/docker-compose.yml up -d
+uv run python services/ingestion/main.py
+uv run python services/retriever/main.py
+uv run python services/generator/main.py
+cd gateway && go run .
 ```
 
-This starts:
-- **PostgreSQL 16** with the `pgvector` extension on `localhost:5432`
-- **Redpanda** (Kafka-compatible) on `localhost:9092`
-- **Redis** on `localhost:6379`
-
-Wait ~10 seconds for Redpanda to finish its health check before proceeding.
-
-### 3. Start the Go gateway
+The schema is created on first connect by the ingestion worker, so ingest a document
+before querying:
 
 ```bash
-cd gateway
-GATEWAY_PORT=8080 \
-KAFKA_ADDR=localhost:9092 \
-RETRIEVER_ADDR=localhost:50051 \
-GENERATOR_ADDR=localhost:50052 \
-go run .
+curl -X POST localhost:8080/ingest \
+  -d '{"doc_id":"doc-1","content":"Cortex stores vectors in pgvector and retrieves them by cosine distance."}'
+# {"status":"accepted","doc_id":"doc-1"}
+
+curl -X POST localhost:8080/api/v1/query -d '{"query":"How does Cortex search?","top_k":3}'
 ```
 
-```bash
-# Verify
-curl http://localhost:8080/healthz
-# {"status":"ok"}
-```
-
-### 4. Start the Retriever service
-
-```bash
-DB_PASSWORD=cortex_dev \
-uv run --package retriever python services/retriever/main.py
-```
-
-### 5. Start the Ingestion worker
-
-```bash
-DB_PASSWORD=cortex_dev \
-uv run --package ingestion python services/ingestion/main.py
-```
-
-### 6. Start the Generator service
-
-```bash
-GOOGLE_API_KEY=<your_key> \
-uv run --package generator python services/generator/main.py
-```
-
-All four processes are now live. The system is ready to ingest documents and answer queries.
+The query endpoint returns the answer, a `grounded` flag, the validated `citations`,
+and the `chunks` that were retrieved.
 
 ---
 
-## API Reference
+## API
 
-### `POST /ingest` — Ingest a document
+| Method | Path                 | Purpose                                            |
+| ------ | -------------------- | -------------------------------------------------- |
+| `GET`  | `/healthz`           | Liveness probe. Returns `{"status":"ok"}`          |
+| `POST` | `/ingest`            | Publishes a document to Kafka. Returns `202`        |
+| `POST` | `/api/v1/query`      | Full RAG pipeline: retrieve, then generate          |
 
-Publishes the document to Kafka. The ingestion worker picks it up asynchronously, chunks it, embeds it, and writes it to pgvector. Returns immediately with `202 Accepted`.
+**`POST /ingest`** — body `{ "doc_id": "doc-1", "content": "..." }`.
+Returns `202 Accepted` once the message is enqueued to `document.uploaded`.
 
-```bash
-curl -s -X POST http://localhost:8080/ingest \
-  -H "Content-Type: application/json" \
-  -d '{
-    "doc_id": "go-concurrency-guide",
-    "content": "Go achieves concurrency through goroutines — lightweight threads managed by the Go runtime. Unlike OS threads, goroutines are multiplexed across a small number of OS threads by the scheduler, making it practical to spawn thousands simultaneously. Communication between goroutines is encouraged via channels rather than shared memory, following the principle: do not communicate by sharing memory; instead, share memory by communicating."
-  }'
-```
+**`POST /api/v1/query`** — body `{ "query": "...", "top_k": 3 }`. `top_k` defaults to 5.
+Returns:
 
-**Response `202 Accepted`:**
 ```json
 {
-  "status": "accepted",
-  "doc_id": "go-concurrency-guide"
-}
-```
-
----
-
-### `POST /api/v1/query` — Query the knowledge base
-
-Runs the full RAG pipeline synchronously: vector search → LLM generation → citation validation.
-
-```bash
-curl -s -X POST http://localhost:8080/api/v1/query \
-  -H "Content-Type: application/json" \
-  -d '{
-    "query": "How does Go handle concurrency?",
-    "top_k": 3
-  }' | jq
-```
-
-**Response `200 OK`:**
-```json
-{
-  "answer": "Go handles concurrency through goroutines, which are lightweight threads managed by the Go runtime rather than the operating system. The scheduler multiplexes goroutines across a small number of OS threads, making it practical to run thousands concurrently. The idiomatic approach to coordination is via channels, following the principle of sharing memory by communicating rather than communicating by sharing memory.",
+  "answer": "Cortex retrieves chunks using pgvector cosine distance.",
   "grounded": true,
-  "citations": [
-    {
-      "chunk_id": "42",
-      "document_id": "go-concurrency-guide",
-      "excerpt": "goroutines — lightweight threads managed by the Go runtime"
-    }
-  ],
-  "chunks": [
-    {
-      "chunk_id": "42",
-      "document_id": "go-concurrency-guide",
-      "content": "Go achieves concurrency through goroutines — lightweight threads managed by the Go runtime...",
-      "score": 0.9741
-    }
-  ]
+  "citations": [{ "chunk_id": "42", "document_id": "doc-1", "excerpt": "..." }],
+  "chunks":    [{ "chunk_id": "42", "document_id": "doc-1", "content": "...", "score": 0.81 }]
 }
 ```
 
-**Response fields:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `answer` | `string` | LLM-generated answer grounded in the retrieved context |
-| `grounded` | `bool` | `true` if at least one citation was validated against the provided chunks |
-| `citations` | `array` | Each entry maps a claim to a `chunk_id`, `document_id`, and verbatim `excerpt` |
-| `chunks` | `array` | Raw retrieval results with cosine similarity `score` ∈ [0, 1] |
+`score` is cosine similarity in `[0, 1]` — the code converts pgvector's distance with
+`1 - (embedding <=> query)` so that 1 means identical.
 
 ---
 
-## Project Structure
+## Configuration
+
+Every setting is an environment variable with a default, except the two marked
+**required**, which fail fast at startup rather than connecting with a guess.
+
+**Gateway** (`gateway/main.go`)
+
+| Variable         | Default                 | Controls                    |
+| ---------------- | ----------------------- | --------------------------- |
+| `GATEWAY_PORT`   | `8080`                  | HTTP listen port            |
+| `KAFKA_ADDR`     | `localhost:9092`        | Broker for ingestion events  |
+| `KAFKA_TOPIC`    | `document.uploaded`     | Topic published to          |
+| `RETRIEVER_ADDR` | `localhost:50051`       | Retriever gRPC target       |
+| `GENERATOR_ADDR` | `localhost:50052`       | Generator gRPC target       |
+
+**Retriever** (`services/retriever/config.py`)
+
+| Variable          | Default           | Controls                             |
+| ----------------- | ----------------- | ------------------------------------ |
+| `DB_PASSWORD`     | **required**      | Postgres password                    |
+| `DB_HOST`         | `localhost`       | Postgres host                        |
+| `DB_PORT`         | `5432`            | Postgres port                        |
+| `DB_USER`         | `cortex`          | Postgres user                        |
+| `DB_NAME`         | `cortex`          | Postgres database                    |
+| `GRPC_PORT`       | `50051`           | gRPC listen port                     |
+| `EMBEDDING_MODEL` | `all-MiniLM-L6-v2`| Sentence embedding model             |
+
+**Generator** (`services/generator/config.py`)
+
+| Variable          | Default            | Controls                        |
+| ----------------- | ------------------ | ------------------------------- |
+| `GOOGLE_API_KEY`  | **required**       | Gemini API key                  |
+| `GENERATOR_MODEL` | `gemini-2.5-flash` | Default model; overridable per request |
+| `GRPC_PORT`       | `50052`            | gRPC listen port                |
+
+**Ingestion worker** (`services/ingestion/config.py`)
+
+| Variable                 | Default           | Controls                          |
+| ------------------------ | ----------------- | --------------------------------- |
+| `DB_PASSWORD`            | **required**      | Postgres password                 |
+| `KAFKA_BOOTSTRAP_SERVERS`| `localhost:9092`  | Consumer group brokers           |
+| `KAFKA_TOPIC`            | `document.uploaded`| Topic to consume                 |
+| `KAFKA_GROUP_ID`         | `ingestion-worker`| Consumer group id                |
+| `EMBEDDING_MODEL`        | `all-MiniLM-L6-v2`| Sentence embedding model          |
+| `CHUNK_SIZE`             | `500`             | Characters per chunk              |
+| `CHUNK_OVERLAP`          | `50`              | Overlap between chunks            |
+| `DB_HOST` / `DB_PORT` / `DB_USER` / `DB_NAME` | same as retriever | Postgres connection |
+
+`CHUNK_OVERLAP` must be less than `CHUNK_SIZE`; the config dataclass rejects anything
+else at construction.
+
+---
+
+## Project layout
 
 ```
 cortex/
-├── gateway/                       # Go API gateway
-│   ├── main.go                    # HTTP server, Kafka producer, gRPC clients
-│   ├── gen/cortex/v1/             # Generated Go protobuf + gRPC stubs
-│   ├── go.mod
-│   └── go.sum
-│
+├── proto/cortex/v1/cortex.proto   # the Go ↔ Python contract
+├── gateway/                       # Go HTTP gateway + Kafka producer
+│   ├── main.go                    #   endpoints, wiring, graceful shutdown
+│   └── gen/                       #   buf-generated Go stubs (committed)
 ├── services/
-│   ├── ingestion/                 # Python — Kafka consumer → chunk → embed → pgvector
-│   │   ├── main.py                # Consumer loop & pipeline orchestration
-│   │   ├── config.py              # Env-var configuration (frozen dataclass)
-│   │   ├── db.py                  # Schema init, document & chunk persistence
-│   │   ├── processor.py           # LangChain RecursiveCharacterTextSplitter
-│   │   ├── embedder.py            # SentenceTransformers (all-MiniLM-L6-v2, 384-dim)
-│   │   ├── gen/cortex/v1/         # Generated Python protobuf stubs
-│   │   └── pyproject.toml
-│   │
-│   ├── retriever/                 # Python — gRPC server, pgvector cosine search
-│   │   ├── main.py                # gRPC server entrypoint (port 50051)
-│   │   ├── config.py
-│   │   ├── db.py                  # search_similar_chunks (<=> cosine operator)
-│   │   ├── embedder.py            # Query embedding
-│   │   ├── server.py              # RetrieverServiceServicer implementation
-│   │   ├── gen/cortex/v1/         # Generated Python protobuf stubs
-│   │   └── pyproject.toml
-│   │
-│   └── generator/                 # Python — gRPC server, Gemini, citation validation
-│       ├── main.py                # gRPC server entrypoint (port 50052)
-│       ├── config.py
-│       ├── llm.py                 # RAG prompt, structured output, hallucination guard
-│       ├── server.py              # GeneratorServiceServicer implementation
-│       ├── gen/cortex/v1/         # Generated Python protobuf stubs
-│       └── pyproject.toml
-│
-├── proto/
-│   └── cortex/v1/
-│       └── cortex.proto           # Single source of truth for all inter-service contracts
-│
+│   ├── ingestion/                 # Kafka consumer: chunk → embed → upsert
+│   │   ├── main.py  processor.py  embedder.py  db.py  config.py
+│   │   └── tests/                 #   unit + integration tests
+│   ├── retriever/                 # gRPC :50051, pgvector cosine search
+│   └── generator/                 # gRPC :50052, Gemini + citation validation
+│       └── llm.py                 #   prompt, structured output, validation
 ├── infra/
-│   ├── local/
-│   │   └── docker-compose.yml     # Postgres+pgvector, Redpanda, Redis
-│   └── terraform/                 # Cloud deployment (WIP)
-│       ├── main.tf
-│       └── variables.tf
-│
-├── buf.gen.yaml                   # Buf code generation config
-├── pyproject.toml                 # Root uv workspace
-└── Makefile
+│   ├── local/docker-compose.yml   # Postgres + Kafka for development
+│   └── terraform/                 # AWS scaffolding (no resources defined yet)
+├── Makefile                       # up / down / proto / clean
+└── .github/workflows/ci.yml
 ```
 
 ---
 
-## Environment Variables
-
-| Variable | Service | Required | Default | Description |
-|----------|---------|:--------:|---------|-------------|
-| `DB_PASSWORD` | ingestion, retriever | ✅ | — | PostgreSQL password |
-| `DB_HOST` | ingestion, retriever | | `localhost` | PostgreSQL host |
-| `DB_PORT` | ingestion, retriever | | `5432` | PostgreSQL port |
-| `DB_USER` | ingestion, retriever | | `cortex` | PostgreSQL user |
-| `DB_NAME` | ingestion, retriever | | `cortex` | PostgreSQL database |
-| `GOOGLE_API_KEY` | generator | ✅ | — | Google AI Studio API key |
-| `GENERATOR_MODEL` | generator | | `gemini-2.5-flash` | Gemini model override |
-| `KAFKA_ADDR` | gateway, ingestion | | `localhost:9092` | Kafka bootstrap server |
-| `KAFKA_TOPIC` | gateway, ingestion | | `document.uploaded` | Ingestion topic name |
-| `RETRIEVER_ADDR` | gateway | | `localhost:50051` | Retriever gRPC address |
-| `GENERATOR_ADDR` | gateway | | `localhost:50052` | Generator gRPC address |
-| `GATEWAY_PORT` | gateway | | `8080` | HTTP listen port |
-| `REDIS_ADDR` | gateway | | `localhost:6379` | Redis address |
-
----
-
-## Regenerating Protobuf Stubs
-
-The generated stubs in each `gen/` directory are committed to the repository. To regenerate them after modifying `proto/cortex/v1/cortex.proto`:
+## Development
 
 ```bash
-# Install buf: https://buf.build/docs/installation
-buf generate
+make up                  # start Postgres + Kafka
+make down                # stop them
+make proto               # regenerate Go and Python gRPC stubs (needs buf)
+make clean               # remove generated stubs
+
+uv run ruff check .      # lint
+uv run pytest -m "not integration"   # unit tests
+uv run pytest            # adds integration tests — needs a live Postgres
 ```
 
-`buf.gen.yaml` emits Go stubs into `gateway/gen/` and Python stubs into each `services/*/gen/`.
+Tests split into two tiers. Unit tests cover chunking, embedding dimension validation,
+and schema/constraint behaviour; integration tests are marked and exercise a real
+PostgreSQL + pgvector instance. Only the unit tier runs in CI.
+
+> The three services share flat top-level module names (`config`, `db`, `embedder`),
+> so only the service under test is placed on `sys.path`. That is why `pythonpath` is
+> pinned per service in `pyproject.toml` rather than left to the editable installs.
+
+CI runs four checks: `ruff`, a lockfile-drift check (`uv lock --check`), `go build`
+plus `go vet` plus `gofmt` on the gateway, and the Python unit tests.
 
 ---
 
-## gRPC Contracts
+## Design notes
 
-All services are defined in `proto/cortex/v1/cortex.proto`.
+**The contract is the architecture.** `cortex.proto` is the only thing the Go gateway
+knows about Python. Adding a field is a schema change; changing an implementation is
+not. Both sides generate from the same file, so drift is a compile error rather than a
+runtime surprise.
 
-### `RetrieverService.SearchDocuments`
+**Ingestion is at-least-once, and deliberately so.** The worker commits its Kafka
+offset manually, only after the database write succeeds. A crash mid-document replays
+the message rather than dropping it. `upsert_chunks` removes chunks that are no longer
+present, so re-ingesting a corrected document converges instead of duplicating.
 
-Takes a natural-language `query` and `top_k`. Embeds the query with the same `all-MiniLM-L6-v2` model used at index time and performs an HNSW cosine similarity search. Returns a ranked list of `DocumentChunk` objects with chunk content, source document ID, and relevance score.
+**Citation validation is an invariant, not a prompt instruction.** The generator
+builds the set of `chunk_id`s it actually supplied, then filters the model's
+structured output against that set. Hallucinated references are stripped and logged.
+Telling the model not to hallucinate is a request; filtering its output is a guarantee.
 
-### `GeneratorService.GenerateAnswer`
+**Embedding dimensions are checked at startup.** `load_model` compares the model's
+output dimension against the 384 the schema expects and refuses to boot on a mismatch.
+The alternative — discovering it on the first user query — is a much worse failure.
 
-Takes a `query` and the list of `DocumentChunk` objects from the retriever. Constructs a RAG prompt, calls Gemini via LangChain with `with_structured_output`, and validates every citation against the `chunk_id`s actually provided. Returns `answer`, `citations[]`, and `grounded` (true if ≥1 citation survived validation).
+**One deadline across both RPCs.** The gateway gives retrieval and generation a single
+shared 30-second budget rather than 30 seconds each, so a slow retriever cannot silently
+consume the generator's allowance.
 
----
-
-## Service Ports
-
-| Service | Port | Protocol |
-|---------|------|----------|
-| API Gateway | 8080 | HTTP |
-| Retriever | 50051 | gRPC |
-| Generator | 50052 | gRPC |
-| PostgreSQL | 5432 | TCP |
-| Redis | 6379 | TCP |
-| Kafka / Redpanda | 9092 | TCP |
-
----
-
-## Author
-
-Built by **Ronnit Chopra** — Computer Science, Michigan State University, Class of 2026.
-
-[![GitHub](https://img.shields.io/badge/GitHub-KlutzyFella-181717?style=flat-square&logo=github)](https://github.com/KlutzyFella)
+**Shutdown is ordered.** `SIGINT`/`SIGTERM` stops the HTTP server, flushes the Kafka
+producer for up to 5 seconds, then closes the gRPC connections — in-flight messages are
+delivered before the process exits.
 
 ---
 
 ## License
 
-MIT
+[MIT](LICENSE)

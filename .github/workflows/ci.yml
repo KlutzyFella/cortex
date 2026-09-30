@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      # Ruff needs none of the project dependencies, so this runs in seconds.
+      - name: Ruff
+        run: uvx ruff check .
+
+      # Fails if a dependency was added or removed without re-locking.
+      - name: Lockfile is in sync
+        run: uv lock --check
+
+  go:
+    name: Gateway
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: gateway
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.1'
+          cache-dependency-path: gateway/go.sum
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Check formatting
+        run: test -z "$(gofmt -l .)"
+
+  test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      # Pulls in sentence-transformers and therefore a CPU PyTorch wheel, so
+      # this step dominates the job's runtime.
+      - name: Install dependencies
+        run: uv sync --all-packages --frozen
+
+      # Integration tests need a live PostgreSQL+pgvector instance and are
+      # covered by the `services/ingestion/tests/test_db.py` marker.
+      - name: Unit tests
+        run: uv run --frozen pytest -m "not integration" -q
