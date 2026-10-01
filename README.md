@@ -120,6 +120,11 @@ Returns:
 `score` is cosine similarity in `[0, 1]` — the code converts pgvector's distance with
 `1 - (embedding <=> query)` so that 1 means identical.
 
+Failures report the status that actually applies rather than a blanket `502`. A
+query against an empty index returns `404` with an explanation (the generator is
+never called with zero chunks), a downstream `INVALID_ARGUMENT` becomes `400`,
+`UNAVAILABLE` becomes `503`, and a deadline becomes `504`.
+
 ---
 
 ## Configuration
@@ -207,21 +212,29 @@ make down                # stop them
 make proto               # regenerate Go and Python gRPC stubs (needs buf)
 make clean               # remove generated stubs
 
-uv run ruff check .      # lint
-uv run pytest -m "not integration"   # unit tests
-uv run pytest            # adds integration tests — needs a live Postgres
+uv run ruff check .              # lint
+uv run pytest services/ingestion -m "not integration" -q   # ingestion unit tests
+uv run pytest services/generator -q                        # generator unit tests
+uv run pytest services/ingestion                           # adds integration tests
+                                                          # — needs a live Postgres
 ```
 
 Tests split into two tiers. Unit tests cover chunking, embedding dimension validation,
-and schema/constraint behaviour; integration tests are marked and exercise a real
-PostgreSQL + pgvector instance. Only the unit tier runs in CI.
+schema/constraint behaviour, and the generator's citation validation; integration
+tests are marked and exercise a real PostgreSQL + pgvector instance. Only the unit
+tier runs in CI.
 
-> The three services share flat top-level module names (`config`, `db`, `embedder`),
-> so only the service under test is placed on `sys.path`. That is why `pythonpath` is
-> pinned per service in `pyproject.toml` rather than left to the editable installs.
+> The three services share flat top-level module names (`config`, `db`, `embedder`,
+> `llm`), so exactly one service root can be on `sys.path` per run — otherwise
+> `import config` resolves to whichever service was collected first. That is why
+> `pythonpath` is pinned per service rather than left to the editable installs, and
+> why each suite gets its own `pytest` invocation instead of one combined sweep.
+
+Go tests live alongside the gateway and run with `go test ./...` from `gateway/`.
 
 CI runs four checks: `ruff`, a lockfile-drift check (`uv lock --check`), `go build`
-plus `go vet` plus `gofmt` on the gateway, and the Python unit tests.
+plus `go vet` plus `go test` plus `gofmt` on the gateway, and the Python unit tests
+for both services.
 
 ---
 

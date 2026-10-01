@@ -47,6 +47,11 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # The query handler is the only thing standing between an HTTP client and
+      # two gRPC services, and its error mapping is easy to regress silently.
+      - name: Test
+        run: go test ./...
+
       - name: Check formatting
         run: |
           unformatted=$(gofmt -l .)
@@ -75,7 +80,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-packages --frozen
 
+      # The services share flat top-level module names (config, db, embedder,
+      # llm), so only one service root can be on sys.path per run. Each suite
+      # therefore gets its own pytest invocation rather than one combined sweep.
+      #
       # Integration tests need a live PostgreSQL+pgvector instance and are
-      # covered by the `services/ingestion/tests/test_db.py` marker.
-      - name: Unit tests
-        run: uv run --frozen pytest -m "not integration" -q
+      # marked in services/ingestion/tests/test_db.py.
+      - name: Ingestion unit tests
+        run: uv run --frozen pytest services/ingestion -m "not integration" -q
+
+      - name: Generator unit tests
+        run: uv run --frozen pytest services/generator -q

@@ -18,9 +18,17 @@ build-backend = "uv_build"
 members = ["services/*"]
 
 [tool.pytest.ini_options]
+# The three services share flat top-level module names (config, db, embedder,
+# llm, main, server), so exactly one service root can be on sys.path per run --
+# pytest imports each conftest.py once, so a service cannot claim the path after
+# another has already used it. Tests are therefore run one service at a time:
+#
+#     pytest services/ingestion
+#     pytest services/generator
+#
+# A bare `pytest` below only covers ingestion; the other services' suites are
+# run explicitly by CI. See services/generator/tests/conftest.py.
 testpaths = ["services/ingestion/tests"]
-# The three services share flat top-level module names (config, db, embedder),
-# so only the service under test may be on sys.path.
 pythonpath = ["services/ingestion"]
 markers = ["integration: requires a running PostgreSQL + pgvector instance"]
 
