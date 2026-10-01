@@ -45,8 +45,8 @@ class RetrieverServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def SearchDocuments(self, request, context):
-        """SearchDocuments performs hybrid (semantic + BM25) search and returns the
-        top-k most relevant document chunks.
+        """SearchDocuments performs semantic (vector similarity) search over stored
+        chunks and returns the top-k most relevant results.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
