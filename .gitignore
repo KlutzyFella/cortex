@@ -5,6 +5,7 @@ kafkadata/
 *.sqlite
 
 *.log
+logs/
 services/**/*.log
 gateway/*.log
 *-bin

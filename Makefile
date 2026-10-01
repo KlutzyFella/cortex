@@ -7,7 +7,7 @@ GATEWAY_GEN := gateway/gen
 SERVICES    := services/ingestion services/retriever services/generator
 COMPOSE     := infra/local/docker-compose.yml
 
-.PHONY: proto up down clean help
+.PHONY: proto up down run logs clean help
 
 ## help       Show available targets
 help:
@@ -35,9 +35,17 @@ proto: $(GATEWAY_GEN)
 up:
 	docker compose -f $(COMPOSE) up -d
 
-## down       Stop local infrastructure
+## down      Stop local infrastructure
 down:
 	docker compose -f $(COMPOSE) down
+
+## run       Start the full stack in order and wait until it is serving
+run:
+	@bash scripts/run-dev.sh
+
+## logs      Tail every service log (use after `make run` in another terminal)
+logs:
+	@tail -n 20 -f logs/*.log
 
 ## clean      Remove all generated gRPC stubs
 clean:
