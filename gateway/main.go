@@ -13,7 +13,9 @@ import (
 
 	"github.com/confluentinc/confluent-kafka-go/v2/kafka"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/status"
 
 	cortexv1 "github.com/KlutzyFella/cortex/gateway/gen/cortex/v1"
 )
@@ -202,11 +204,21 @@ func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("retriever error: %v", err)
-		http.Error(w, "retriever unavailable", http.StatusBadGateway)
+		writeGRPCError(w, "retriever", err)
 		return
 	}
 
 	retrievedChunks := searchResp.GetChunks()
+	if len(retrievedChunks) == 0 {
+		// Nothing in the index matched. This is not an upstream failure, so it
+		// must not be reported as one: the caller needs to know the request was
+		// valid but there was no corpus to answer from.
+		log.Printf("retriever returned no chunks for query=%q", truncate(req.Query, 100))
+		http.Error(w,
+			"no indexed content matched this query; ingest documents before querying",
+			http.StatusNotFound)
+		return
+	}
 
 	// --- Step 2: Generate grounded answer ---
 	genResp, err := s.generator.GenerateAnswer(ctx, &cortexv1.GenerateAnswerRequest{
@@ -215,7 +227,7 @@ func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("generator error: %v", err)
-		http.Error(w, "generator unavailable", http.StatusBadGateway)
+		writeGRPCError(w, "generator", err)
 		return
 	}
 
@@ -258,6 +270,52 @@ func (s *server) queryHandler(w http.ResponseWriter, r *http.Request) {
 		"citations": citations,
 		"chunks":    chunks,
 	})
+}
+
+// writeGRPCError translates a downstream gRPC status into the closest HTTP
+// status and forwards the upstream's own detail message.
+//
+// Collapsing every failure to 502 mislabels client errors as upstream outages:
+// an INVALID_ARGUMENT from the generator means this gateway sent a request the
+// generator rejected, which is a 400, not a bad gateway.
+func writeGRPCError(w http.ResponseWriter, upstream string, err error) {
+	st, ok := status.FromError(err)
+	if !ok {
+		// Not a gRPC status (e.g. a transport-level failure), so there is no
+		// code to map and nothing to report but the fact of the outage.
+		http.Error(w, upstream+" unreachable", http.StatusBadGateway)
+		return
+	}
+
+	var code int
+	switch st.Code() {
+	case codes.InvalidArgument:
+		code = http.StatusBadRequest
+	case codes.NotFound:
+		code = http.StatusNotFound
+	case codes.AlreadyExists:
+		code = http.StatusConflict
+	case codes.ResourceExhausted:
+		code = http.StatusTooManyRequests
+	case codes.DeadlineExceeded:
+		code = http.StatusGatewayTimeout
+	case codes.Unavailable:
+		code = http.StatusServiceUnavailable
+	default:
+		code = http.StatusBadGateway
+	}
+
+	http.Error(w, fmt.Sprintf("%s: %s", upstream, st.Message()), code)
+}
+
+// truncate shortens s to at most n runes so untrusted input can be logged
+// without unbounded growth. Rune-based so a multi-byte character is never split.
+func truncate(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n]) + "..."
 }
 
 func getenv(key, fallback string) string {
