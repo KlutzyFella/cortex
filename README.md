@@ -62,24 +62,34 @@ Docker (for Postgres and Kafka), and a `GOOGLE_API_KEY`.
 git clone https://github.com/KlutzyFella/cortex.git
 cd cortex
 
-make up                # Postgres (pgvector) on :5432, Kafka on :9092
-uv sync --all-packages # Python deps for all three services
+uv sync --all-packages            # Python deps for all three services
+export DB_PASSWORD=cortex_dev     # required by the retriever and ingestion worker
+export GOOGLE_API_KEY=...         # required by the generator
 
-export DB_PASSWORD=cortex_dev          # required by the retriever and ingestion worker
-export GOOGLE_API_KEY=...              # required by the generator
+make run
 ```
 
-Then start each process in its own terminal:
+`make run` brings up Postgres and Kafka, creates the `document.uploaded` topic,
+starts the three Python services and the gateway **in dependency order**, and waits
+until each is actually listening before starting the next — so it does not report
+success until `/healthz` answers. Cold start to serving takes about 25 seconds. Logs
+go to `logs/<service>.log`; `Ctrl-C` stops the services and leaves the containers
+running (`make down` stops those too).
+
+To follow the logs from a second terminal:
 
 ```bash
-uv run python services/ingestion/main.py
-uv run python services/retriever/main.py
-uv run python services/generator/main.py
-cd gateway && go run .
+make logs
 ```
 
-The schema is created on first connect by the ingestion worker, so ingest a document
-before querying:
+Without a `GOOGLE_API_KEY` you can still exercise ingestion and retrieval, neither of
+which calls the LLM. Queries return `503` until the generator is running:
+
+```bash
+SKIP_GENERATOR=1 make run
+```
+
+Now ingest a document and query it:
 
 ```bash
 curl -X POST localhost:8080/ingest \
@@ -91,6 +101,10 @@ curl -X POST localhost:8080/api/v1/query -d '{"query":"How does Cortex search?",
 
 The query endpoint returns the answer, a `grounded` flag, the validated `citations`,
 and the `chunks` that were retrieved.
+
+Ingestion is asynchronous, so allow a second or two between the two calls. The
+database schema is created by the ingestion worker on first connect, so querying
+before anything has been indexed returns `404` rather than an empty answer.
 
 ---
 
@@ -194,11 +208,13 @@ cortex/
 │   │   └── tests/                 #   unit + integration tests
 │   ├── retriever/                 # gRPC :50051, pgvector cosine search
 │   └── generator/                 # gRPC :50052, Gemini + citation validation
-│       └── llm.py                 #   prompt, structured output, validation
+│       ├── llm.py                 #   prompt, structured output, validation
+│       └── tests/                 #   citation validation tests
 ├── infra/
 │   ├── local/docker-compose.yml   # Postgres + Kafka for development
 │   └── terraform/                 # AWS scaffolding (no resources defined yet)
-├── Makefile                       # up / down / proto / clean
+├── scripts/run-dev.sh             # what `make run` calls
+├── Makefile                       # run / up / down / logs / proto / clean
 └── .github/workflows/ci.yml
 ```
 
@@ -207,10 +223,11 @@ cortex/
 ## Development
 
 ```bash
-make up                  # start Postgres + Kafka
-make down                # stop them
-make proto               # regenerate Go and Python gRPC stubs (needs buf)
-make clean               # remove generated stubs
+make run                  # full stack in dependency order, waits until serving
+make logs                 # tail logs/<service>.log
+make up / make down       # just Postgres + Kafka
+make proto                # regenerate Go and Python gRPC stubs (needs buf)
+make clean                # remove generated stubs
 
 uv run ruff check .              # lint
 uv run pytest services/ingestion -m "not integration" -q   # ingestion unit tests
