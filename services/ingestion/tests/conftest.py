@@ -41,15 +41,19 @@ def db_conn(test_config: IngestionConfig):
     """
     Yield a real psycopg connection for integration tests.
 
+    Uses ``db.get_connection`` rather than ``psycopg.connect`` directly so the
+    tests exercise the same path the ingestion worker does, including
+    ``register_vector``. Connecting directly would skip that call and leave the
+    production connection setup untested.
+
     The schema is initialised before the test and the entire connection is
     closed afterwards.  Each test should manage its own transaction.
     """
     pytest.importorskip("psycopg", reason="psycopg 3 not installed")
 
-    import psycopg
-    from db import initialize_schema
+    from db import get_connection, initialize_schema
 
-    conn = psycopg.connect(test_config.db_dsn, autocommit=False)
+    conn = get_connection(test_config)
     initialize_schema(conn)
     yield conn
     conn.rollback()

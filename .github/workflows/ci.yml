@@ -62,8 +62,41 @@ jobs:
           fi
 
   test:
-    name: Unit tests
+    name: Python tests
     runs-on: ubuntu-latest
+
+    # The database layer can only be meaningfully tested against a real
+    # PostgreSQL with pgvector: the schema, the HNSW index, the 384-dimension
+    # vector column and the upsert conflict target are all enforced by the
+    # server, not by Python. Same image and credentials as
+    # infra/local/docker-compose.yml, so CI and a local run exercise the same
+    # database.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: cortex
+          POSTGRES_PASSWORD: cortex_dev
+          POSTGRES_DB: cortex
+        ports:
+          - 5432:5432
+        # Without this the first test races Postgres's own startup and fails
+        # intermittently with a connection refused.
+        options: >-
+          --health-cmd "pg_isready -U cortex"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    # Spelled out rather than relying on the defaults in conftest.py, so a
+    # change to those defaults cannot silently repoint CI at the wrong database.
+    env:
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_USER: cortex
+      DB_PASSWORD: cortex_dev
+      DB_NAME: cortex
+
     steps:
       - uses: actions/checkout@v4
 
@@ -76,18 +109,22 @@ jobs:
         run: uv python install 3.12
 
       # Pulls in sentence-transformers and therefore a CPU PyTorch wheel, so
-      # this step dominates the job's runtime.
+      # this step dominates the job's runtime. The integration tests reuse this
+      # environment rather than repeating the install in a second job.
       - name: Install dependencies
         run: uv sync --all-packages --frozen
 
       # The services share flat top-level module names (config, db, embedder,
       # llm), so only one service root can be on sys.path per run. Each suite
       # therefore gets its own pytest invocation rather than one combined sweep.
-      #
-      # Integration tests need a live PostgreSQL+pgvector instance and are
-      # marked in services/ingestion/tests/test_db.py.
       - name: Ingestion unit tests
         run: uv run --frozen pytest services/ingestion -m "not integration" -q
+
+      # Runs against the postgres service above. These cover schema creation,
+      # the HNSW index, idempotent upserts and the foreign key — none of which a
+      # unit test can assert.
+      - name: Ingestion integration tests
+        run: uv run --frozen pytest services/ingestion -m integration -q
 
       - name: Generator unit tests
         run: uv run --frozen pytest services/generator -q

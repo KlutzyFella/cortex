@@ -232,14 +232,18 @@ make clean                # remove generated stubs
 uv run ruff check .              # lint
 uv run pytest services/ingestion -m "not integration" -q   # ingestion unit tests
 uv run pytest services/generator -q                        # generator unit tests
-uv run pytest services/ingestion                           # adds integration tests
+uv run pytest services/ingestion -m integration -q        # database tests
                                                           # — needs a live Postgres
 ```
 
-Tests split into two tiers. Unit tests cover chunking, embedding dimension validation,
-schema/constraint behaviour, and the generator's citation validation; integration
-tests are marked and exercise a real PostgreSQL + pgvector instance. Only the unit
-tier runs in CI.
+Tests split into two tiers, and both run in CI. Unit tests cover chunking, embedding
+dimension validation and the generator's citation validation. The integration tier
+runs against a real PostgreSQL + pgvector — service container in CI, `make up`
+locally — and covers the things only the server can enforce: schema creation, the
+HNSW index, idempotent upserts, stale-chunk cleanup on re-ingestion, and the foreign
+key from `document_chunks` to `documents`. They connect through the same
+`get_connection` the ingestion worker uses, so the production connection setup is
+covered too.
 
 > The three services share flat top-level module names (`config`, `db`, `embedder`,
 > `llm`), so exactly one service root can be on `sys.path` per run — otherwise
@@ -249,9 +253,9 @@ tier runs in CI.
 
 Go tests live alongside the gateway and run with `go test ./...` from `gateway/`.
 
-CI runs four checks: `ruff`, a lockfile-drift check (`uv lock --check`), `go build`
-plus `go vet` plus `go test` plus `gofmt` on the gateway, and the Python unit tests
-for both services.
+CI runs three jobs: `ruff` plus a lockfile-drift check (`uv lock --check`); `go build`,
+`go vet`, `go test` and a `gofmt` check on the gateway; and the Python suites for both
+services against a `pgvector/pgvector:pg16` service container.
 
 ---
 
