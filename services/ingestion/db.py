@@ -18,8 +18,24 @@ logger = logging.getLogger(__name__)
 
 
 def get_connection(config: "IngestionConfig") -> psycopg.Connection:
-    """Return a new psycopg 3 connection with the pgvector type registered."""
+    """Return a new psycopg 3 connection with the pgvector type registered.
+
+    The ``vector`` extension is created first, in its own auto-committed
+    transaction.  ``register_vector`` queries ``pg_type`` for the ``vector``
+    type and raises ``ProgrammingError: vector type not found in the database``
+    when the extension is absent, so on a fresh database the extension has to
+    exist before registration is attempted.  Doing it here is what makes the
+    documented "schema is created on first connect" behaviour true.
+    """
     conn = psycopg.connect(config.db_dsn, autocommit=False)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        conn.close()
+        raise
     register_vector(conn)
     return conn
 

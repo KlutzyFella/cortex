@@ -13,8 +13,18 @@ logger = logging.getLogger(__name__)
 
 
 def get_connection(config: "RetrieverConfig") -> psycopg.Connection:
-    """Return a new psycopg 3 connection with the pgvector type registered."""
+    """Return a new psycopg 3 connection with the pgvector type registered.
+
+    ``CREATE EXTENSION IF NOT EXISTS vector`` runs first because
+    ``register_vector`` raises ``ProgrammingError: vector type not found in the
+    database`` when the extension is absent.  Without it the retriever cannot
+    start against a database that no ingestion worker has touched yet, making
+    service start order significant.  The ingestion worker owns the schema; this
+    only ensures the type exists.
+    """
     conn = psycopg.connect(config.db_dsn, autocommit=True)
+    with conn.cursor() as cur:
+        cur.execute("CREATE EXTENSION IF NOT EXISTS vector")
     register_vector(conn)
     return conn
 
