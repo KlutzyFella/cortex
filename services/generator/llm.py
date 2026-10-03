@@ -1,13 +1,20 @@
 """LLM logic: RAG prompt construction, generation, and citation extraction."""
 
 import logging
+import os
 from typing import NamedTuple
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+# OpenRouter exposes an OpenAI-compatible API; the base URL is overridable for
+# tests and self-hosted mirrors but defaults to production.
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+DEFAULT_GEMINI_MODEL = "gemini-2.5-flash"
+DEFAULT_OPENROUTER_MODEL = "nvidia/nemotron-3-super-120b-a12b:free"
 
 # ---------------------------------------------------------------------------
 # Structured output schema
@@ -63,16 +70,46 @@ class GeneratedAnswer(NamedTuple):
     grounded: bool
 
 
-def build_chain(api_key: str, model_name: str):
-    """Return a LangChain LCEL chain with structured output."""
-    llm = ChatGoogleGenerativeAI(
-        google_api_key=api_key,
-        model=model_name,
-        temperature=0,
-        max_output_tokens=2048,
+def build_chat_model(provider: str, api_key: str, model_name: str):
+    """Return the chat model for *provider* without any prompt or parsing.
+
+    One ``if`` on purpose: two providers do not earn a registry. Add a third
+    branch when a third provider exists, not before.
+    """
+    if provider == "gemini":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        return ChatGoogleGenerativeAI(
+            google_api_key=api_key,
+            model=model_name,
+            temperature=0,
+            max_output_tokens=2048,
+        )
+    if provider == "openrouter":
+        from langchain_openai import ChatOpenAI
+
+        return ChatOpenAI(
+            api_key=api_key,
+            base_url=os.environ.get("OPENROUTER_BASE_URL", OPENROUTER_BASE_URL),
+            model=model_name,
+            temperature=0,
+            max_tokens=2048,
+        )
+    raise ValueError(
+        f"Unknown provider {provider!r}: expected 'gemini' or 'openrouter'."
     )
+
+
+def build_chain(provider: str, api_key: str, model_name: str):
+    """Return a LangChain LCEL chain with structured output.
+
+    The retry wrapper is load-bearing: OpenRouter free-tier rate limits
+    (~20 req/min) make a bare chain a 429 machine on any multi-query run.
+    """
+    llm = build_chat_model(provider, api_key, model_name)
     structured_llm = llm.with_structured_output(LLMResponse)
-    return _PROMPT | structured_llm
+    chain = _PROMPT | structured_llm
+    return chain.with_retry(stop_after_attempt=4, wait_exponential_jitter=True)
 
 
 def _format_context(chunks: list[dict]) -> str:

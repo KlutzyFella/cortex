@@ -20,7 +20,9 @@ class GeneratorServicer(cortex_pb2_grpc.GeneratorServiceServicer):
 
     def __init__(self, config: GeneratorConfig) -> None:
         self._config = config
-        self._chain = build_chain(config.google_api_key, config.default_model)
+        self._chain = build_chain(
+            config.provider, config.api_key, config.default_model
+        )
         logger.info("LLM chain initialised with model '%s'", config.default_model)
 
     def GenerateAnswer(self, request, context):
@@ -38,9 +40,13 @@ class GeneratorServicer(cortex_pb2_grpc.GeneratorServiceServicer):
             return cortex_pb2.GenerateAnswerResponse()
 
         # Use the model override from the request if provided, otherwise keep the default.
+        # The override stays within the configured provider: a model ID alone
+        # does not say which API serves it.
         model_name = request.model if request.model else self._config.default_model
         if model_name != self._config.default_model:
-            chain = build_chain(self._config.google_api_key, model_name)
+            chain = build_chain(
+                self._config.provider, self._config.api_key, model_name
+            )
         else:
             chain = self._chain
 

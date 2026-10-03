@@ -2,7 +2,8 @@
 Cortex Generator Service
 
 Starts a gRPC server on port 50052 implementing GeneratorService.GenerateAnswer:
-  query + context_chunks → LLM (Gemini) → grounded answer + citations
+  query + context_chunks → LLM → grounded answer + citations
+(the provider is selected with LLM_PROVIDER: 'gemini' or 'openrouter')
 """
 
 import logging
