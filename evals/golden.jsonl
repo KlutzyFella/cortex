@@ -62,3 +62,18 @@
 {"query": "Which LangChain version introduced the retry helper the generator uses?", "gold": [], "answer": "", "negative": true}
 {"query": "How are eval baselines versioned across embedding model upgrades?", "gold": [], "answer": "", "negative": true}
 {"query": "What content does the safety guard model block?", "gold": [], "answer": "", "negative": true}
+{"query": "How do I run just one app from the Python monorepo?", "gold": [{"doc_id": "uv-workspaces", "chunk_index": 1}], "answer": "uv run --project for the single service", "negative": false}
+{"query": "How does CI catch someone changing Python dependencies without updating the pinned environment?", "gold": [{"doc_id": "uv-lockfile-ci", "chunk_index": 0}], "answer": "uv lock --check fails the build", "negative": false}
+{"query": "What kinds of Python lint checks are actually turned on here?", "gold": [{"doc_id": "ruff-lint", "chunk_index": 0}], "answer": "E, F, and I rule sets", "negative": false}
+{"query": "Why can't CI just fail the build whenever the Go formatter prints something?", "gold": [{"doc_id": "gofmt-trap", "chunk_index": 0}], "answer": "gofmt -l exits 0 even with output; capture first", "negative": false}
+{"query": "How do I run the tests that don't need the database?", "gold": [{"doc_id": "pytest-markers", "chunk_index": 0}], "answer": "-m not integration", "negative": false}
+{"query": "Why do the Python tests have to be run in separate groups?", "gold": [{"doc_id": "pytest-syspath", "chunk_index": 0}], "answer": "flat module names; one service root per run", "negative": false}
+{"query": "What database container does the build pipeline use?", "gold": [{"doc_id": "gha-postgres-service", "chunk_index": 0}], "answer": "pgvector/pgvector:pg16", "negative": false}
+{"query": "Why is the Python CI job still slow even with caching?", "gold": [{"doc_id": "gha-caching", "chunk_index": 0}], "answer": "CPU PyTorch wheel install dominates", "negative": false}
+{"query": "What does the local launcher wait for before bringing the rest of the stack up?", "gold": [{"doc_id": "compose-healthcheck", "chunk_index": 0}], "answer": "Postgres pg_isready + Kafka API versions, then topic", "negative": false}
+{"query": "Why does local startup compile the Go gateway first instead of launching it straight from source?", "gold": [{"doc_id": "gateway-build-pid", "chunk_index": 0}], "answer": "track the server PID, not the go tool wrapper", "negative": false}
+{"query": "How is a nearest-neighbor distance turned into a similarity score?", "gold": [{"doc_id": "pgvector-hnsw", "chunk_index": 0}], "answer": "1 minus cosine distance", "negative": false}
+{"query": "Does ingest wait for vector generation before it responds?", "gold": [{"doc_id": "kafka-topics", "chunk_index": 0}], "answer": "202 on broker ack, before chunking/embedding", "negative": false}
+{"query": "What goes wrong if we change the text-vector model on only one side of the system?", "gold": [{"doc_id": "st-minilm", "chunk_index": 1}], "answer": "query/document paths must share the model", "negative": false}
+{"query": "Roughly how much would this stack cost per month at low, medium, and high traffic?", "gold": [], "answer": "", "negative": true}
+{"query": "What production instance sizes and replica counts should we use for the database, broker, gateway, and workers?", "gold": [], "answer": "", "negative": true}

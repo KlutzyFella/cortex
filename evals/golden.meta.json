@@ -1,7 +1,8 @@
 {
-  "version": 1,
+  "version": 2,
   "corpus_sha256": "8bd39990043065e2b3f81e51a56b3a8e776a3a34ef3031627f4a1204d63c31b5",
   "chunk_size": 500,
   "chunk_overlap": 50,
-  "embedding_model": "all-MiniLM-L6-v2"
+  "embedding_model": "all-MiniLM-L6-v2",
+  "golden_note": "v2 adds 13 blind second-author positives + 2 negatives"
 }
