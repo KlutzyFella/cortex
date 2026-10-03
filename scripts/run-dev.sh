@@ -19,6 +19,16 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
+# Local secrets live in .env (gitignored; see .env.example). set -a auto-exports
+# them so every child process — docker compose, the uv-run services — inherits
+# them without per-terminal exports. Explicitly exported variables win.
+if [ -f .env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  . ./.env
+  set +a
+fi
+
 LOG_DIR="$REPO_ROOT/logs"
 COMPOSE_FILE="infra/local/docker-compose.yml"
 TOPIC="${KAFKA_TOPIC:-document.uploaded}"
@@ -59,9 +69,22 @@ preflight() {
 
   if [ "${SKIP_GENERATOR:-0}" = "1" ]; then
     warn "SKIP_GENERATOR=1 — starting without the generator; queries will return 503"
-  elif [ -z "${GOOGLE_API_KEY:-}" ]; then
-    die "GOOGLE_API_KEY is not set. Either export it, or use SKIP_GENERATOR=1 to
-       start without the generator (ingest and retrieval still work)."
+  else
+    # The generator is provider-aware (LLM_PROVIDER=gemini|openrouter); require
+    # whichever credential the active provider needs rather than assuming Gemini.
+    case "${LLM_PROVIDER:-gemini}" in
+      gemini)
+        [ -n "${GOOGLE_API_KEY:-}" ] || die "GOOGLE_API_KEY is not set. Either export it, or use SKIP_GENERATOR=1 to
+         start without the generator (ingest and retrieval still work)."
+        ;;
+      openrouter)
+        [ -n "${OPENROUTER_API_KEY:-}" ] || die "OPENROUTER_API_KEY is not set (LLM_PROVIDER=openrouter). Either export it, or use SKIP_GENERATOR=1 to
+         start without the generator (ingest and retrieval still work)."
+        ;;
+      *)
+        die "Unknown LLM_PROVIDER '${LLM_PROVIDER}': expected 'gemini' or 'openrouter'."
+        ;;
+    esac
   fi
 
   echo "  docker, uv and DB_PASSWORD present"

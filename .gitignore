@@ -23,5 +23,7 @@ __pycache__/
 *.py[cod]
 
 secrets.yaml
+.env
+evals/reports/
 *.pem
 *.key

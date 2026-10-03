@@ -56,15 +56,14 @@ Python stubs by `grpc_tools.protoc`; both are committed.
 ## Quickstart
 
 **Prerequisites:** Go 1.26.1, Python 3.12+, [`uv`](https://docs.astral.sh/uv/),
-Docker (for Postgres and Kafka), and a `GOOGLE_API_KEY`.
+Docker (for Postgres and Kafka), and an LLM key (OpenRouter or Gemini).
 
 ```bash
 git clone https://github.com/KlutzyFella/cortex.git
 cd cortex
 
 uv sync --all-packages            # Python deps for all three services
-export DB_PASSWORD=cortex_dev     # required by the retriever and ingestion worker
-export GOOGLE_API_KEY=...         # required by the generator
+cp .env.example .env              # fill in DB_PASSWORD + one LLM key; .env is gitignored
 
 make run
 ```
@@ -82,7 +81,7 @@ To follow the logs from a second terminal:
 make logs
 ```
 
-Without a `GOOGLE_API_KEY` you can still exercise ingestion and retrieval, neither of
+Without an LLM key you can still exercise ingestion and retrieval, neither of
 which calls the LLM. Queries return `503` until the generator is running:
 
 ```bash
@@ -170,11 +169,15 @@ Every setting is an environment variable with a default, except the two marked
 
 **Generator** (`services/generator/config.py`)
 
-| Variable          | Default            | Controls                        |
-| ----------------- | ------------------ | ------------------------------- |
-| `GOOGLE_API_KEY`  | **required**       | Gemini API key                  |
-| `GENERATOR_MODEL` | `gemini-2.5-flash` | Default model; overridable per request |
-| `GRPC_PORT`       | `50052`            | gRPC listen port                |
+| Variable           | Default                                 | Controls                        |
+| ------------------ | --------------------------------------- | ------------------------------- |
+| `LLM_PROVIDER`     | `gemini`                                | `gemini` or `openrouter`          |
+| `GOOGLE_API_KEY`   | **required when provider is gemini**    | Gemini API key                  |
+| `OPENROUTER_API_KEY` | **required when provider is openrouter** | OpenRouter API key            |
+| `GENERATOR_MODEL`  | `gemini-2.5-flash` / Nemotron Super*    | Default model; overridable per request |
+| `GRPC_PORT`        | `50052`                                 | gRPC listen port                |
+
+\* `nvidia/nemotron-3-super-120b-a12b:free` when `LLM_PROVIDER=openrouter`.
 
 **Ingestion worker** (`services/ingestion/config.py`)
 
