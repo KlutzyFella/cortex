@@ -134,3 +134,36 @@ jobs:
       # needed — same job, separate invocation, per the sys.path note above.
       - name: Retriever unit tests
         run: uv run --frozen pytest services/retriever -q
+
+      # Eval harness as steps, not a new job: the torch install and embedding
+      # model above are reused, and this job's postgres service is the index.
+      # Unit tests first (pure metric math + golden-lint tests, no DB).
+      - name: Eval unit tests
+        run: uv run --frozen pytest evals -q
+
+      # The golden set lints itself: no verbatim copies, every positive has a
+      # distractor, references resolve. A junk question fails here, not in scoring.
+      - name: Golden set lint
+        run: uv run --frozen python evals/lint_golden.py
+
+      # Idempotent fixture load into the postgres service above.
+      - name: Seed eval corpus
+        run: uv run --frozen python evals/seed.py --via db
+
+      # Warn-only until the golden set earns gating: EVAL_ENFORCE=enforce flips
+      # a significant McNemar regression into a failure. Reports are written
+      # either way so the trend is visible from day one.
+      - name: Retrieval eval vs baseline
+        env:
+          EVAL_ENFORCE: warn
+        run: uv run --frozen python evals/run.py --compare evals/baseline.json
+
+      - name: Upload eval reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-reports
+          path: |
+            evals/reports/report.json
+            evals/reports/report.md
+          retention-days: 30

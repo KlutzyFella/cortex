@@ -178,10 +178,18 @@ def main() -> int:
     ap.add_argument("--retriever", choices=(*BACKENDS, "all"), default="all")
     ap.add_argument("--k", default="5,10,20")
     ap.add_argument("--compare", default=None)
-    ap.add_argument("--enforce", choices=("warn", "enforce"), default="warn")
+    ap.add_argument(
+        "--enforce",
+        choices=("warn", "enforce"),
+        default=os.environ.get("EVAL_ENFORCE", "warn"),
+    )
     ap.add_argument("--write-baseline", default=None)
     ap.add_argument("--report-dir", default="reports")
     args = ap.parse_args()
+    if args.enforce not in ("warn", "enforce"):
+        # argparse does not validate defaults against choices, so a typo'd
+        # EVAL_ENFORCE would otherwise degrade silently to warn behavior.
+        ap.error(f"EVAL_ENFORCE must be 'warn' or 'enforce', got {args.enforce!r}")
     _bootstrap(orig_cwd, args, "corpus", "golden", "meta", "compare",
                "write_baseline", "report_dir")
 

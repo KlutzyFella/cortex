@@ -197,6 +197,25 @@ else at construction.
 
 ---
 
+## Evals
+
+Retrieval is measured, not asserted. The harness lives in `evals/`:
+
+```bash
+uv run --project evals pytest evals          # metric + lint unit tests
+uv run --project evals python evals/seed.py --via db   # load fixture corpus
+uv run --project evals python evals/run.py --compare evals/baseline.json
+```
+
+`run.py` scores dense/bm25/random backends on the committed golden set
+(65 positives + 14 negatives), prints a markdown table, and writes
+`evals/reports/report.{json,md}`. Comparisons use a paired McNemar test on
+per-query hit@5; `EVAL_ENFORCE=enforce` fails on significant regression,
+otherwise it warns. CI runs all of this warn-only and uploads the reports
+as artifacts. LLM-judged metrics arrive in Phase 3; generation needs no key.
+
+---
+
 ## Project layout
 
 ```
@@ -210,9 +229,17 @@ cortex/
 │   │   ├── main.py  processor.py  embedder.py  db.py  config.py
 │   │   └── tests/                 #   unit + integration tests
 │   ├── retriever/                 # gRPC :50051, pgvector cosine search
+│   │   └── tests/                 #   contract, SQL-shape, parity tests
 │   └── generator/                 # gRPC :50052, Gemini + citation validation
 │       ├── llm.py                 #   prompt, structured output, validation
 │       └── tests/                 #   citation validation tests
+├── evals/                         # retrieval harness (see Evals below)
+│   ├── evalkit/                   #   metrics, backends, chunking, DB
+│   ├── corpus.jsonl               #   fixed 18-doc fixture corpus
+│   ├── golden.jsonl               #   65 positives + 14 negatives (v2)
+│   ├── golden.meta.json           #   pins: corpus hash, chunking, model
+│   ├── baseline.json              #   committed numbers McNemar compares to
+│   └── run.py seed.py lint_golden.py
 ├── infra/
 │   ├── local/docker-compose.yml   # Postgres + Kafka for development
 │   └── terraform/                 # AWS scaffolding (no resources defined yet)
