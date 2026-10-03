@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "corpus_sha256": "8bd39990043065e2b3f81e51a56b3a8e776a3a34ef3031627f4a1204d63c31b5",
+  "chunk_size": 500,
+  "chunk_overlap": 50,
+  "embedding_model": "all-MiniLM-L6-v2"
+}

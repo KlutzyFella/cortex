@@ -1,0 +1,64 @@
+{"query": "How do I run just the retriever service instead of everything?", "gold": [{"doc_id": "uv-workspaces", "chunk_index": 1}], "answer": "uv run --project services/retriever", "negative": false}
+{"query": "Why does CI install Python dependencies only once for all test suites?", "gold": [{"doc_id": "uv-workspaces", "chunk_index": 2}], "answer": "one uv sync provisions every later pytest invocation", "negative": false}
+{"query": "What has to happen after adding a package to the workspace members list?", "gold": [{"doc_id": "uv-workspaces", "chunk_index": 0}], "answer": "regenerate the lockfile with uv lock", "negative": false}
+{"query": "What CI step stops a dependency change from merging without re-locking?", "gold": [{"doc_id": "uv-lockfile-ci", "chunk_index": 0}], "answer": "uv lock --check in the lint job", "negative": false}
+{"query": "Why are eval baselines only comparable when library versions are identical?", "gold": [{"doc_id": "uv-lockfile-ci", "chunk_index": 1}], "answer": "metrics drift otherwise; --frozen pins the resolve set", "negative": false}
+{"query": "Which install step dominates CI runtime and why is it paid only once?", "gold": [{"doc_id": "uv-lockfile-ci", "chunk_index": 1}], "answer": "CPU PyTorch wheel via sentence-transformers; single synced env", "negative": false}
+{"query": "Which ruff rule sets does the repo enforce?", "gold": [{"doc_id": "ruff-lint", "chunk_index": 0}], "answer": "E, F, and I with line-length 100", "negative": false}
+{"query": "Why are generated protobuf stubs never linted?", "gold": [{"doc_id": "ruff-lint", "chunk_index": 0}], "answer": "gen/ directories are in extend-exclude", "negative": false}
+{"query": "How should flat service modules sort against third-party imports?", "gold": [{"doc_id": "ruff-lint", "chunk_index": 1}], "answer": "third-party first, service modules as first-party after", "negative": false}
+{"query": "Why doesn't a check command like gofmt -l && echo clean prove formatting is clean?", "gold": [{"doc_id": "gofmt-trap", "chunk_index": 0}], "answer": "gofmt -l exits 0 even when it lists files", "negative": false}
+{"query": "What does the gateway CI store in a file when gofmt output drifts?", "gold": [{"doc_id": "gofmt-trap", "chunk_index": 0}], "answer": "the file list into a variable, then gofmt -d output", "negative": false}
+{"query": "How do I run only the tests that don't need Postgres?", "gold": [{"doc_id": "pytest-markers", "chunk_index": 0}], "answer": "pytest -m \"not integration\"", "negative": false}
+{"query": "What makes the database tests integration tests rather than unit tests?", "gold": [{"doc_id": "pytest-markers", "chunk_index": 1}], "answer": "schema, HNSW index, vector column, upserts need a live server", "negative": false}
+{"query": "Why do fresh CI runs sometimes fail database tests with connection refused?", "gold": [{"doc_id": "pytest-markers", "chunk_index": 2}], "answer": "tests race Postgres startup; pg_isready healthcheck guards it", "negative": false}
+{"query": "Why can't the Python suites run as one combined pytest sweep?", "gold": [{"doc_id": "pytest-syspath", "chunk_index": 0}], "answer": "flat module names resolve to whichever service loads first", "negative": false}
+{"query": "How did a generator test ever import the wrong service's config module?", "gold": [{"doc_id": "pytest-syspath", "chunk_index": 1}, {"doc_id": "pytest-syspath", "chunk_index": 2}], "answer": "root pythonpath applies around conftest loading; llm-only tests never noticed", "negative": false}
+{"query": "When an editable install and a sys.path directory provide the same module, what wins?", "gold": [{"doc_id": "pytest-syspath", "chunk_index": 2}], "answer": "the real directory at sys.path position zero", "negative": false}
+{"query": "Which Postgres image runs in CI and why that one specifically?", "gold": [{"doc_id": "gha-postgres-service", "chunk_index": 0}], "answer": "pgvector/pgvector:pg16; vector type and HNSW need the server", "negative": false}
+{"query": "Why does the CI job spell out database variables instead of trusting conftest defaults?", "gold": [{"doc_id": "gha-postgres-service", "chunk_index": 1}], "answer": "a default change must not silently repoint CI", "negative": false}
+{"query": "How does eval work avoid paying container startup more than once?", "gold": [{"doc_id": "gha-postgres-service", "chunk_index": 2}], "answer": "the database is a job-level service shared by all steps", "negative": false}
+{"query": "What single step dominates the Python CI job's runtime?", "gold": [{"doc_id": "gha-caching", "chunk_index": 0}], "answer": "dependency install, chiefly the CPU torch wheel", "negative": false}
+{"query": "What must CI cache keys derive from, and what must they never use?", "gold": [{"doc_id": "gha-caching", "chunk_index": 2}], "answer": "lockfiles like uv.lock and go.sum; never branches or timestamps", "negative": false}
+{"query": "Why does the lint job run its check before anything else?", "gold": [{"doc_id": "gha-caching", "chunk_index": 1}], "answer": "it needs no project dependencies and finishes in seconds", "negative": false}
+{"query": "What does the run script wait for before creating the Kafka topic?", "gold": [{"doc_id": "compose-healthcheck", "chunk_index": 0}], "answer": "pg_isready for Postgres and API versions for Kafka", "negative": false}
+{"query": "Where does the UNKNOWN_TOPIC_OR_PART log line on first poll come from?", "gold": [{"doc_id": "compose-healthcheck", "chunk_index": 1}], "answer": "consumer subscribed before the topic existed", "negative": false}
+{"query": "After Ctrl-C, are Postgres and Kafka still running?", "gold": [{"doc_id": "compose-healthcheck", "chunk_index": 2}], "answer": "yes; make down stops them", "negative": false}
+{"query": "Why does the run script build the gateway instead of using go run?", "gold": [{"doc_id": "gateway-build-pid", "chunk_index": 0}], "answer": "go run tracks the tool PID, leaving the server on Ctrl-C", "negative": false}
+{"query": "In what order does shutdown stop the services?", "gold": [{"doc_id": "gateway-build-pid", "chunk_index": 1}], "answer": "reverse dependency order, gateway first", "negative": false}
+{"query": "What happens when services tracked by the run script die?", "gold": [{"doc_id": "gateway-build-pid", "chunk_index": 2}], "answer": "the script exits instead of faking a healthy stack", "negative": false}
+{"query": "How is cosine distance turned into the similarity scores callers see?", "gold": [{"doc_id": "pgvector-hnsw", "chunk_index": 0}], "answer": "score is 1 minus distance, in [0,1]", "negative": false}
+{"query": "Why is the query embedding bound twice in the retrieval SQL?", "gold": [{"doc_id": "pgvector-hnsw", "chunk_index": 1}], "answer": "once for scoring, once for ordering", "negative": false}
+{"query": "What happens if someone configures an embedding model with the wrong dimension?", "gold": [{"doc_id": "pgvector-hnsw", "chunk_index": 1}, {"doc_id": "st-minilm", "chunk_index": 0}], "answer": "startup failure: ValueError at model load, not a mid-query error", "negative": false}
+{"query": "Which production lookup needs no vector extension at all?", "gold": [{"doc_id": "postgres-btree", "chunk_index": 1}], "answer": "fetching document content by id", "negative": false}
+{"query": "Why do tests assert index presence from pg_indexes instead of running EXPLAIN?", "gold": [{"doc_id": "postgres-btree", "chunk_index": 1}], "answer": "small tables scan sequentially regardless of indexes", "negative": false}
+{"query": "What user-visible skew appears when the ingestion worker falls behind?", "gold": [{"doc_id": "kafka-consumer-groups", "chunk_index": 1}], "answer": "ingest returns 202 while queries 404 on a stale index", "negative": false}
+{"query": "Why is consuming the same document twice safe?", "gold": [{"doc_id": "kafka-consumer-groups", "chunk_index": 1}], "answer": "upserts are idempotent and stale chunks are deleted", "negative": false}
+{"query": "Why do test fixtures use different Kafka group ids?", "gold": [{"doc_id": "kafka-consumer-groups", "chunk_index": 2}], "answer": "so test consumers never steal the dev worker's partitions", "negative": false}
+{"query": "Does ingest return 202 before or after the worker embeds the document?", "gold": [{"doc_id": "kafka-topics", "chunk_index": 0}], "answer": "on broker acknowledgement, before chunking or embedding", "negative": false}
+{"query": "Who tracks how much of the topic has been processed?", "gold": [{"doc_id": "kafka-topics", "chunk_index": 2}], "answer": "the consumer group offsets, not the topic", "negative": false}
+{"query": "Why not rely on broker auto-creation for the topic?", "gold": [{"doc_id": "kafka-topics", "chunk_index": 1}], "answer": "it fires late and leaves UNKNOWN_TOPIC_OR_PART in the log", "negative": false}
+{"query": "What status does a query against an empty index return, and is the generator called?", "gold": [{"doc_id": "grpc-deadline", "chunk_index": 1}], "answer": "404; the generator is never called", "negative": false}
+{"query": "What status codes should alerting expect from the query endpoint for empty versus dead backends?", "gold": [{"doc_id": "grpc-deadline", "chunk_index": 1}], "answer": "404 means empty index, 503 means a dead dependency", "negative": false}
+{"query": "Why do slow reasoning models produce walls of 504s on this gateway?", "gold": [{"doc_id": "grpc-deadline", "chunk_index": 0}], "answer": "both hops share one 30-second budget", "negative": false}
+{"query": "Which gRPC code maps to HTTP 429 and when would it fire?", "gold": [{"doc_id": "grpc-status-mapping", "chunk_index": 0}], "answer": "ResourceExhausted; free-tier rate limits", "negative": false}
+{"query": "Can a single query override the configured generation model with an OpenRouter one?", "gold": [{"doc_id": "grpc-status-mapping", "chunk_index": 2}], "answer": "no; overrides stay within the configured provider", "negative": false}
+{"query": "What message size limit applies to each service query?", "gold": [{"doc_id": "grpc-status-mapping", "chunk_index": 1}], "answer": "4 MB retriever, 8 MB generator", "negative": false}
+{"query": "What breaks if the embedding model is swapped without touching anything else?", "gold": [{"doc_id": "st-minilm", "chunk_index": 0}], "answer": "golden labels and baselines silently invalidate", "negative": false}
+{"query": "What exact arguments does every model.encode call in the system use?", "gold": [{"doc_id": "st-minilm", "chunk_index": 1}], "answer": "show_progress_bar=False, convert_to_numpy=True", "negative": false}
+{"query": "Why does the retriever take minutes to listen on a cold start?", "gold": [{"doc_id": "st-minilm", "chunk_index": 2}], "answer": "it loads the embedding model before binding the port", "negative": false}
+{"query": "Why do adjacent chunks repeat 50 characters of boundary text?", "gold": [{"doc_id": "chunking-overlap", "chunk_index": 0}], "answer": "so boundary-straddling sentences stay retrievable", "negative": false}
+{"query": "What must an eval label use instead of chunk_id, and why?", "gold": [{"doc_id": "chunking-overlap", "chunk_index": 1}], "answer": "(doc_id, chunk_index); SERIAL ids shift on reseed", "negative": false}
+{"query": "What happens when a re-ingested document gets shorter?", "gold": [{"doc_id": "chunking-overlap", "chunk_index": 1}], "answer": "stored rows above the new max index are deleted", "negative": false}
+{"query": "What k1 and b values does the production BM25 hybrid ranker use?", "gold": [], "answer": "", "negative": true}
+{"query": "How do I rotate the Postgres password without restarting the services?", "gold": [], "answer": "", "negative": true}
+{"query": "What is the S3 backup schedule for the vector database?", "gold": [], "answer": "", "negative": true}
+{"query": "Which embedding model should I use for French legal documents?", "gold": [], "answer": "", "negative": true}
+{"query": "How do I enable TLS on the Kafka listener?", "gold": [], "answer": "", "negative": true}
+{"query": "What is the p99 latency SLO for the query endpoint?", "gold": [], "answer": "", "negative": true}
+{"query": "How does the gateway authenticate its callers?", "gold": [], "answer": "", "negative": true}
+{"query": "What is the monthly GPU bill for running the embedding service?", "gold": [], "answer": "", "negative": true}
+{"query": "How do I shard document_chunks across regions?", "gold": [], "answer": "", "negative": true}
+{"query": "Which LangChain version introduced the retry helper the generator uses?", "gold": [], "answer": "", "negative": true}
+{"query": "How are eval baselines versioned across embedding model upgrades?", "gold": [], "answer": "", "negative": true}
+{"query": "What content does the safety guard model block?", "gold": [], "answer": "", "negative": true}
