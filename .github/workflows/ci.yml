@@ -128,3 +128,9 @@ jobs:
 
       - name: Generator unit tests
         run: uv run --frozen pytest services/generator -q
+
+      # First coverage for the retriever: contract validation, top_k fallback,
+      # SQL shape via fakes, and query/document embedding parity. No database
+      # needed — same job, separate invocation, per the sys.path note above.
+      - name: Retriever unit tests
+        run: uv run --frozen pytest services/retriever -q
